@@ -65,7 +65,7 @@ NAME = 2
 class GoodColumn:
     def __init__(self, column, db_column_name = None, db_column = None, db_type = None, codif=None):
         self.column = column
-        self.id = self.column.name 
+        self.id = self.column.name
         self.db_column_name = db_column_name
         self.by_code = {}
         self.by_uid = {}
@@ -253,8 +253,8 @@ class GoodColumns:
         self.add(Good.f61931523, db_type ='classif') #  = Column(String, info = {"name" : 'Категория для интернет магазина',   'db_type':"classif"}) #',    "name" : 'Категория для интернет магазина',   'type':"classif"},
         self.add(Good.f61669377, db_type ='classif') # = Column(String, info = { "name" : 'Старый постащик',   'db_type':"classif"}) #',    "name" : 'Старый постащик',   'type':"classif"}
         self.add(Good.uid, db_column_name='id')
-        self.add(Good.unit, db_column_name='f14745607', db_type='unit')
-        self.add(Good.country, db_column_name='f14745604', db_type='country')
+        self.add(Good.unit_id, db_column_name='f14745607', db_type='unit')
+        self.add(Good.country_id, db_column_name='f14745604', db_type='country')
 
     def add(self, column , db_type=None, codif=None, db_column_name=None):
         db_column_name = db_column_name if db_column_name else column.name

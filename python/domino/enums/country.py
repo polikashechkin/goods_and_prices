@@ -261,17 +261,26 @@ countries = [
 
 class CountryItem:
     def __init__(self, js):
+        self.js = js
         self.name = js['id']
         self.full_name = js['name']
         self.uid = HexToRaw(js['uid'])
+    
     def __str__(self):
         return self.full_name
     
+    @property
+    def id(self): 
+        return self.js['id']
+
     @property
     def code_name(self):
         return self.name, self.full_name
     @property
     def sname(self):
+        return self.full_name
+    @property
+    def short_name(self):
         return self.full_name
     @property
     def fname(self):

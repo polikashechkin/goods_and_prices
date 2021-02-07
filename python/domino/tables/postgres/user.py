@@ -18,6 +18,7 @@ def on_activate(account_id, msglog):
 class User(Postgres.Base):
 
     ANY_USER_ID = ''
+    FIRST_USER_ID = '1:0:0:1'
 
     __tablename__ = 'user'
 
@@ -39,5 +40,15 @@ class User(Postgres.Base):
 User.NotDisabled = or_(User.disabled == False, User.disabled == None)
 UserTable = User.__table__
 
-Postgres.Table(UserTable)
+def init(postgres, msglog):
+    any_user = postgres.query(User).get(User.ANY_USER_ID)
+    if not any_user:
+        postgres.add(User(id=User.ANY_USER_ID, name = 'ANY_USER'))
+        msglog(f'add ANY USER')
+    first_user = postgres.query(User).get(User.FIRST_USER_ID)
+    if not first_user:
+        postgres.add(User(id=User.FIRST_USER_ID, name = 'FIRST_USER'))
+        msglog(f'add FIRST USER')
+
+Postgres.Table(UserTable).after_activate(init)
 

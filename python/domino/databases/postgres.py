@@ -55,6 +55,8 @@ class PostgresTable:
                     column_type = 'numeric'
                 elif isinstance(column.type, (BYTEA, BINARY, Binary)):
                     column_type = 'bytea'
+                elif f'{column.type}'.lower() == 'varchar':
+                    column_type = 'varchar'
                 else:
                     raise Exception(f'Unknown postgresql type "{column.type}"')
                 self.params = column_type
@@ -94,6 +96,7 @@ class PostgresTable:
                 self.table.execute(pg_cursor, sql)
 
     def __init__(self, table):
+        self.actions = []
         self.columns = {}
         self.indexes = {}
         self.msg_log = None
@@ -108,6 +111,14 @@ class PostgresTable:
                 self.indexes[table_index.name] = table_index
         else:
             raise Exception(f'Недопустимый тип таблицы {type(table)}')
+
+    def additionls(self, *actions):
+        for action in actions:
+            self.actions.append(action)
+
+    def after_activate(self, *actions):
+        for action in actions:
+            self.actions.append(action)
 
     def __repr__(self):
         return f'PostgresTable({self.table_name})'
@@ -130,57 +141,64 @@ class PostgresTable:
         index = PostgresTable.Index(self, None, *column_names, name=name, unique=unique)
         self.indexes[index.name] = index
 
-    def table_exists(self, pg_cursor):
-        pg_cursor.execute("SELECT count(*) FROM information_schema.tables where table_schema='public' and table_name=%s", [self.table_name])
-        return bool(pg_cursor.fetchone()[0])
+    def table_exists(self, postgres):
+        sql = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' and table_name=:name"
+        count = postgres.execute(sql, {'name':self.table_name}).scalar()
+        return bool(count)
 
-    def create_table(self, pg_cursor):
+    def create_table(self, postgres):
         fields = []
         for column in self.columns.values():
             fields.append(f'"{column.name}" {column.params}') 
         fields_clause = ' ,'.join(fields)
         sql = f'create table "{self.table_name}" ({fields_clause})'
-        self.execute(pg_cursor, sql)
+        self.log(sql)
+        postgres.execute(sql)
         for index in self.indexes.values():
-            index.migrate(pg_cursor, existing_indexes={})
+            index.migrate(postgres, existing_indexes={})
 
-    def alter_table(self, pg_cursor):
+    def alter_table(self, postgres):
         existing_columns = {}
-        sql = "select column_name, data_type from information_schema.columns where table_schema='public' and table_name=%s"
-        pg_cursor.execute(sql, [self.table_name])
-        for column_name, data_type in pg_cursor:
+        sql = "select column_name, data_type from information_schema.columns where table_schema='public' and table_name=:table_name"
+        cur = postgres.execute(sql, {'table_name' : self.table_name})
+        for column_name, data_type in cur:
             existing_columns[column_name] = {'data_type':data_type}
+
         for column in self.columns.values():
             if column.name not in existing_columns:
                 sql = f'alter table "{self.table_name}" add column "{column.name}" {column.params}'
-                self.execute(pg_cursor, sql)
+                self.log(sql)
+                postgres.execute(sql)
 
         existing_indexes = {}
-        pg_cursor.execute("select indexname, indexdef from pg_indexes where tablename=%s", [self.table_name])
-        for indexname, indexdef in pg_cursor:
+        cur = postgres.execute("select indexname, indexdef from pg_indexes where tablename=:tablename", {'tablename':self.table_name})
+        for indexname, indexdef in cur:
             existing_indexes[indexname] = {'indexdef' : indexdef}
+
         for index in self.indexes.values():
-            index.migrate(pg_cursor, existing_indexes)
+            index.migrate(postgres, existing_indexes)
 
-    def migrate(self, account_id, msg_log):
-        self.msg_log = msg_log
-        pg_connection = Postgres.connect(account_id)
-        pg_cursor = pg_connection.cursor()
-        with pg_connection:
-            self.on_activate(pg_cursor, msg_log)
-            #if not self.table_exists(pg_cursor):
-            #    self.create_table(pg_cursor)
-            #else:
-            #    self.alter_table(pg_cursor)
+    #def migrate(self, account_id, msg_log):
+    #    self.msg_log = msg_log
+    #    pg_connection = Postgres.connect(account_id)
+    #    pg_cursor = pg_connection.cursor()
+    #    with pg_connection:
+    #        self.on_activate(pg_cursor, msg_log)
 
-    def on_activate(self, cur, msg_log):
+    def on_activate(self, postgres, msg_log):
         msg_log(f'{self}')
         self.msg_log = msg_log
-        if not self.table_exists(cur):
-            self.create_table(cur)
+        if not self.table_exists(postgres):
+            self.create_table(postgres)
         else:
-            self.alter_table(cur)
+            self.alter_table(postgres)
+        
+        for action in self.actions:
+            action(postgres, msg_log)
 
+    #def values(self, values):
+    #    self.values_list.append(values)
+'''
 class PosgresMirgation:
     def __init__(self, account_id, msg_log = None):
         self.account_id = account_id
@@ -230,13 +248,13 @@ class PosgresMirgation:
                 cur.execute(operation)
                 conn.commit()
         conn.close()
+'''
 
 TABLES = {}
 
 class Postgres:
     Base = declarative_base()
     engine_name = 'postgres'
-    #_tables = {}
     JSON = MutableDict.as_mutable(JSONB)
     
     @staticmethod
@@ -244,11 +262,17 @@ class Postgres:
         tables = list(TABLES.values())
         on_activate_log(f'Postgres.on_activate({account_id})')
         Postgres.create_database(account_id, on_activate_log)
-        conn = Postgres.connect(account_id)
-        cur = conn.cursor()
-        with conn:
-            for table in tables:
-                table.on_activate(cur, on_activate_log)
+        postgres = Postgres.Pool().session(account_id)
+        for table in tables:
+            table.on_activate(postgres, on_activate_log)
+        postgres.commit()
+        postgres.close()
+
+        #conn = Postgres.connect(account_id)
+        #cur = conn.cursor()
+        #with conn:
+        #    for table in tables:
+        #        table.on_activate(cur, on_activate_log)
 
     def __init__(self, engine_name = None):
         self.engine_name = engine_name if engine_name else 'postgres'
@@ -271,13 +295,13 @@ class Postgres:
             self.items = {}
             self.engine_name = name if name else 'postgres'
 
-        def session(self, account_id, **kwargs):
+        def session(self, account_id, autocommit=False, **kwargs):
             if account_id is None:
                 return None
             item = self.items.get(account_id)
             if not item:
                 engine = create_engine('postgresql+psycopg2://', creator = Postgres.ConnectionCreator(account_id))
-                item = {'session' : sessionmaker(bind=engine)}
+                item = {'session' : sessionmaker(bind=engine, autocommit=autocommit)}
                 self.items[account_id] = item
             return item['session']()
         
@@ -322,9 +346,9 @@ class Postgres:
         return table
         #return PostgresTable(table_name)
 
-    @staticmethod
-    def Migration(account_id, msg_log):
-        return PosgresMirgation(account_id, msg_log)
+    #@staticmethod
+    #def Migration(account_id, msg_log):
+    #    return PosgresMirgation(account_id, msg_log)
 
     @staticmethod
     def tables(cur):
@@ -371,9 +395,9 @@ class Postgres:
         tablespace = f't{account_id}'
         dbname = f'd{account_id}'
         if os.path.exists(location) and len(os.listdir(location)) !=0:
-            if log:
-                log(f'{os.path.exists(location)} : {len(os.listdir(location))}')
-                log(f'База данных postgres для учетной записи "{account_id}" уже существует')
+            #if log:
+                #log(f'{os.path.exists(location)} : {len(os.listdir(location))}')
+            #    log(f'База данных postgres для учетной записи "{account_id}" уже существует')
             return
         
         os.makedirs(location, exist_ok=True)

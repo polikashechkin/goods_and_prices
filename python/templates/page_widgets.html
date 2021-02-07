@@ -229,111 +229,6 @@ pattern="{{e.PATTERN}}"
 {%- endif -%}
 {%- endmacro -%}
 
-<!-- InputGroup 
-{% macro InputGroup(wg) -%}
-{%- if wg.LABEL -%}
-<div style='display:flex; flex-direction: column'>
-{%- if wg.LABEL != '-' -%}
-<div style="color:gray;font-size:0.8em; margin-bottom:0px">{{wg.LABEL}}</div>
-{%- endif -%}
-<div style="border-radius: 0.3rem; display:flex; flex-direction: row; align-items:center; border-style: solid; border-width: thin; border-color: lightgray; {{wg.STYLE}}">
-{%- if wg.TEXT -%}
-<div style='white-space:nowrap;color:gray;margin-left:0.5rem;'> {{wg.TEXT}} </div>
-{%- endif -%}
-{% for e in wg.ITEMS -%}
-{%- if e.WIDGET_TYPE == 'Input' -%}
-<input {{Tooltip(e)}} {{e.DISABLED}} x-webkit-speech {{Events(e)}} style="border-color:transparent; {{e.STYLE}}" {{Pattern(e)}} class="form-control {{e.CLASS}}" name="{{e.NAME}}" value="{{e.VALUE}}" type="{{e.INPUT_TYPE}}" placeholder="{{e.PLACEHOLDER}}"/>
-{% elif e.WIDGET_TYPE == 'Select' -%}
-<select style="margin-left:0.5rem; border-color:transparent; {{e.STYLE}}" id="{{e.ID}}" name="{{e.NAME}}" {{Class(e)}} {{Events(e)}}>
-<options>
-  {% for option in e.OPTIONS -%}
-  <option value="{{option.VALUE}}">{{option.TEXT}}</option>
-  {%- endfor %}
-</select>
-{% endif -%}
-{%- endfor %}
-{%- if wg.BUTTONS -%}
-{% for button in wg.BUTTONS -%}
-{{ Widget(button) }}
-{%- endfor %}
-{%- endif -%}
-</div>
-</div>
-{%- else -%}
-<div class="input-group {{wg.CLASS}}" id="{{wg.ID}}" {{Style(wg)}}>
-{%- if wg.TEXT -%}
-<div class="input-group-prepend"> <span class="input-group-text">{{wg.TEXT}}</span> </div>
-{%- endif -%}
-{% for i in wg.ITEMS -%}
-{{ Widget(i) }}
-{%- endfor %}
-{%- if wg.BUTTONS -%}
-<div class="input-group-append">
-{% for button in wg.BUTTONS -%}
-{{ Widget(button) }}
-{%- endfor %}
-</div>
-{%- endif -%}
-</div>
-{%- endif -%}
-{%- endmacro %}
--->
-
-<!-- mdl_DropDown -->
-{% macro __mdl_DropDown(w) -%}
-<div  class="dropdown dropbottom">
-<button type="button" class="btn dropdown-toggle {{w.CLASS}}"  {{Style(w)}} data-toggle="dropdown">{{w.TEXT}}</button>
-<div class="dropdown-menu">
-{% for i in w.WIDGETS -%}
-{%- if i.TEXT -%}
-<a class="dropdown-item {{i.CLASS}}" href="#" {{Style(i)}} {{Events(i)}}>{{i.TEXT}}</a>
-{%- else -%}
-<div class="dropdown-divider"></div>
-{%- endif -%}
-{% endfor %}
-</div>
-</div>
-{%- endmacro %}
-
-<!-- mdl_Button -->
-{%- macro __mdl_Button(button) -%}
-{%- if button.IS_DROPDOWN -%}
-{{mdl_DropDown(button)}}
-{%- else -%}
-  {%- if button.LABEL %}
-    <div style="display:flex; flex-direction: column">
-    <div style="color:gray;font-size:0.8em; margin-bottom:0px">{{button.LABEL}}</div>
-    <button {{Disabled(button)}} {{Tooltip(button)}} id="{{button.ID}}" {{Class(button)}} {{Events(button)}} {{Style(button)}}>
-    {{button.TEXT|safe}} 
-    {%- if button.GLIF -%}
-      <span class="fas fa-{{button.GLIF}} {{button.GLIF_CLASS}}" style="{{button.GLIF_STYLE}}"></span>
-    {%- endif -%}
-    </button>
-    </div>
-  {%- else -%}
-    <button {{Disabled(button)}} {{Tooltip(button)}} id="{{button.ID}}" {{Class(button)}} {{Events(button)}} {{Style(button)}}>
-    {{button.TEXT|safe}} 
-    {%- if button.GLIF -%}
-      <span class="fas fa-{{button.GLIF}} {{button.GLIF_CLASS}}" style="{{button.GLIF_STYLE}}"></span>
-    {%- endif -%}
-    </button>
-  {% endif -%}
-{%- endif -%}
-{%- endmacro -%}
-
-<!-- Button -->
-{%- macro __Button(button) -%}
-{%- if button.FRAMEWORK == 'MDL' -%}
-  {{mdl_Button(button)}}
-{%- else -%}
-<button {{Disabled(button)}} class="btn {{button.CLASS}}" {{Events(button)}} {{Style(button)}}>
-  {%- if button.GLIF -%}
-<span class="fas fa-{{button.GLIF}} {{button.GLIF_CLASS}}" style="{{button.GLIF_STYLE}}"></span>
-  {%- endif -%}
-{{button.TEXT|safe}} 
-</button>
-{%- endif -%}
-{%- endmacro -%}
 
 {% macro Widget(widget) -%}
 {%- if widget.WIDGET_TYPE == 'TextBlock' -%}
@@ -342,31 +237,10 @@ pattern="{{e.PATTERN}}"
 {{ Header(widget) }}
 {%- elif widget.WIDGET_TYPE == 'Table' -%}
 {{ Table(widget) }}
-{%- elif widget.WIDGET_TYPE == 'ButtonGroup' -%}
-{{widget.HTML()|safe}}
-{%- elif widget.WIDGET_TYPE == 'Button' -%}
-{{ widget.HTML()|safe}}
-{%- elif widget.WIDGET_TYPE == 'Input' -%}
-{{ widget.HTML()|safe }}
-{%- elif widget.WIDGET_TYPE == 'Select'-%}
-{{ widget.HTML() | safe}}
-{%- elif widget.WIDGET_TYPE == 'InputGroup_' -%}
-{{ InputGroup(widget) }}
-<!--{%- elif widget.WIDGET_TYPE == 'Glif' -%}
-{{widget.HTML()|safe}}
-{%- elif widget.WIDGET_TYPE == 'Tabs' -%}
-{{widget.HTML()|safe}}
-{%- elif widget.WIDGET_TYPE == 'Link' -%}
-{{widget.HTML()|safe}}
--->
 {%- elif widget.WIDGET_TYPE == 'Toolbar' -%}
 {{ Toolbar(widget) }}
-{%- elif widget.WIDGET_TYPE == 'TextArea' -%}
-{{widget.HTML()|safe}}
 {%- elif widget.WIDGET_TYPE == 'DropDown' -%}
 {{ DropDown(widget) }}
-{%- elif widget.WIDGET_TYPE == 'IconButton' -%}
-{{widget.HTML()|safe }}
 {%- elif widget.WIDGET_TYPE == 'Panel' -%}
 {{Panel(widget)}}
 {%- else -%}

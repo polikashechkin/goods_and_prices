@@ -12,18 +12,19 @@ class Page(BasePage):
     def print_table(self):
         table = Table(self, 'table')
         query = self.postgres.query(GoodParam)
-        for good_param in query.order_by(GoodParam.name):
-            row = table.row(good_param.column_id)
-            self.print_row(row, good_param)
+        for param in query.order_by(GoodParam.name):
+            if param.id in ['local_group', 'unit_id', 'country_id']:
+                continue
+            row = table.row(param.id)
+            self.print_row(row, param)
     
     def print_row(self, row, param):
         
-        if param.disabled == False:
-        #row.cell().text(param.column_id)
+        if param.is_available:
             row.cell().href(param.name, 'pages/good_param', {'column_id':param.column_id})
         else:
             row.cell(style='color:lightgray').text(param.name).tooltip(param.column_id)
 
     def __call__(self):
-        Title(self, 'Праметры товара')
+        Title(self, 'Дополнительные параметры товара')
         self.print_table()

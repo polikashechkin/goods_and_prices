@@ -370,7 +370,12 @@ class Application:
             #№account_id = r.account_id
             #log.debug(f'{account_id}')
             account_id = r.account_id if hasattr(r, 'account_id') else None
-            dept_code = r.dept_code if hasattr(r, 'dept_code') else None
+            if hasattr(r, 'dept_code'):
+                dept_code = r.dept_code
+            else:
+                dept_code = None
+            #dept_code = self.__dict__.get('dept_code')
+            # database_connect_info module_i
             if request_log:
                 request_log.dept_code = dept_code
             if engines is not None:

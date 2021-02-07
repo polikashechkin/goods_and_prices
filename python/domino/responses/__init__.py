@@ -69,25 +69,25 @@ class Response:
 
         # SK
         self.sk = self.get('sk')
-        if self.sk:
-            r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
-            self.sk_data = r.hgetall(self.sk)
-        else:
-            self.sk_data = None
+        self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        #if self.sk:
+        #    self.sk_data = r.hgetall(self.sk)
+        #else:
+        #    self.sk_data = None
         
         # ACCOUNT_ID
         self.account_id = self.get('account_id')
         if not self.account_id:
             self.account_id = self.get('account')
-        if not self.account_id and self.sk_data:
-            self.account_id = self.sk_data.get('account')
+        if not self.account_id and self.sk:
+            self.account_id = self.redis.hget(self.sk, 'account')
 
         # DEPT_ID
         self.dept_code = self.get('dept')
         if not self.dept_code:
             self.dept_code = self.get('dept_code')
-        if not self.dept_code and self.sk_data:
-            self.dept_code = self.sk_data.get('guid')
+        if not self.dept_code and self.sk:
+            self.dept_code = self.redis.hget(self.sk, 'guid')
 
         self.LOG = Response.RequestLog(self, start)
 

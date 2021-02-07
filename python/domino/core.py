@@ -521,4 +521,3 @@ class Bool:
         except:
             self.__value = False
 
-

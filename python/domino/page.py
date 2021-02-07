@@ -1,9 +1,10 @@
-import sys, os, arrow, datetime, re, redis, json
+import sys, os, arrow, datetime, re, redis, json, pickle
 import io
 from domino.core import log
 from domino.account import find_account
 import flask
 import html as HTML
+from domino.components.redis_store import RedisStore
 
 def make_download_file_responce(file, file_name=None):
     #log.debug(f'{self}.download("{file}", file_name="{file_name}")')
@@ -148,14 +149,93 @@ class Request:
     def __str__(self):
         return f'Request()'
 
+
+class CtxStore:
+    def __init__(self, names):
+        self.store = RedisStore(1, names)
+        self.js = self.store.get_values(None, {})
+
+    def get(self, name, default=None):
+        return self.js.get(name, default)
+
+    def update(self, values):
+        for name, value in values.items():
+            self.js[name] = value
+        self.store.set_values(None, self.js)
+
+#    def __init__(self, *values):
+#        self.master_key = f'ctx://{"/".join(values)}'
+#        self.redis = redis.Redis(host='localhost', port=6379, db=1)
+#        dump = self.redis.get(self.master_key)
+#        self.js = pickle.loads(dump) if dump else {}#
+
+#    def get(self, name, default=None):
+#        return self.js.get(name, default)
+
+#    def update(self, values):
+#        for name, value in values.items():
+#            self.js[name] = value
+#        self.redis.set(self.master_key, pickle.dumps(self.js))
+
+class Store:
+    def __init__(self, redis, sk, page_id):
+        self.redis = redis
+        self.session_id = sk
+        self.page_id = page_id
+        dump = self.redis.hget(sk, page_id)
+        self.js = pickle.loads(dump) if dump else {}
+    
+    def get(self, name, default = None):
+        return self.js.get(name, default)
+
+    def save(self):
+        self.redis.hset(self.session_id, self.page_id, pickle.dumps(self.js))
+
+    def set(self, values = None, **kvargs):
+        if values:
+            self.js.update(values)
+        self.js.update(kvargs)
+        self.save()
+
+    def var(self, name, value):
+        if name not in self.js:
+            self.js[name] = value
+            self.save()
+
+    def __getitem__(self, name):
+        return self.js[name]
+
+    def __setitem__(self, name, value):
+        self.js[name] = value
+        self.save()
+
+    def __delitem__(self, name):  
+        if name in self.js:
+            del self.js[name]
+            self.save()
+
+    def __getattr__(self, name):
+        return self.js[name]
+    
+    def __contains__(self, name):
+        return name in self.js
+
+    def __str__(self):
+        return f'{self.js}'
+
+    def __repr__(self):
+        return f'{self.js}'
+ 
 class Page:
+    ID = ''
     def __init__(self, application, request, controls = None, framework = None):
         self.application = application
 
         # REQUEST ------------
         self.ARGS = request.args
         self.FORM = request.form if request.method == 'POST' else None
-        self.request = Request(request, application)
+        self.request = request
+        #self.request = Request(request, application)
 
         # CONTROLS -----------
         if controls:
@@ -178,33 +258,29 @@ class Page:
             self.UPDATE = False
         
         # SESSION_KEY -------
-        SK = request.args.get('sk')
-        self.redis = None
-        if SK:
-            self.SK = SK
-            r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
-            self.redis = r
-            SK_INFO = r.hgetall(SK)
-            if SK_INFO:
-                self.SK_INFO = SK_INFO
-                self.account_id = SK_INFO.get('account')
-                self.user_id = SK_INFO.get('domino_user_id')
-                self.user_name = SK_INFO.get('domino_user_name')
+        self.SK = request.args.get('sk')
+        #self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        self.redis = redis.Redis(host='localhost', port=6379, db=0)
+
+        self.account_id = self.redis.hget(self.SK, 'account').decode()
+        self.user_id = self.redis.hget(self.SK, 'domino_user_id').decode()
+        self.user_name = self.redis.hget(self.SK, 'domino_user_name').decode()
+        self.DEPT_ID = self.redis.hget(self.SK, 'guid').decode()
+
+        #if self.SK:
+        #    SK_INFO = self.redis.hgetall(SK)
+        #    if SK_INFO:
+        #        self.SK_INFO = SK_INFO
+        #        self.account_id = SK_INFO.get('account')
+        #        self.user_id = SK_INFO.get('domino_user_id')
+        #        self.user_name = SK_INFO.get('domino_user_name')
 
         # PATH ---------------
         self.python = f'/{self.application.product_id}/active/python'
-        self.attributes = {'sk': SK if SK else ''}
+        self.attributes = {'sk': self.SK if self.SK else ''}
         self.path = request.path.split('.', 1)[0]
         self.path = self.path[1:]
         self.fullpath = os.path.join(self.python, self.path)
-
-        # CONTEXT ------------
-        #self.user_context = {}
-        #if self.redis is not None: 
-        #    user_context = self.redis.hget(self.SK, self.user_id)
-        #    if user_context is not None:
-        #        self.user_context = json.loads(user_context)
-
 
         # WIDGETS ------------
         self.TITLE = None
@@ -216,10 +292,28 @@ class Page:
 
         # GRANTS ------------
         #self.grants = None
-    
-    #@property
-    #def page(self):
-    #    return self
+
+        self._USER_PAGE_STORE = None
+        self._STORE = None
+ #       self._STORE = None
+
+    @property
+    def STORE(self):
+        if self._STORE is None:
+            self._STORE = Store(self.redis, self.SK, self.ID)
+        return self._STORE
+
+#    @property
+#    def STORE(self):
+#        if self._STORE is None:
+#            self._STORE = Store(self.redis, self.SK, self.ID)  
+
+    @property
+    def USER_PAGE_STORE(self):
+        if self._USER_PAGE_STORE is None:
+            self._USER_PAGE_STORE = CtxStore(('ctx', self.application.module_id, self.ID, self.account_id, self.user_id))
+        return self._USER_PAGE_STORE
+        #====================================
 
     @property
     def WIDGETS(self):
@@ -241,49 +335,47 @@ class Page:
         pass
 
     def make_response(self, fn = None):
-        #log.debug(f'PAGE.make_response ({fn})')
-        try:
-            make_response = False
-            control_ID = None
-            if fn:
-                pos = fn.find('.')
-                if pos != -1:
-                    control_ID = fn[:pos]
-                    control_fn = fn[pos+1:]
-                    #log.debug(f'control_ID={control_ID}, control_fn={control_fn}, CONTROLS={self.CONTROLS}')
-                    if self.CONTROLS is not None:
-                        control = self.CONTROLS.get(control_ID)
-                        if control is not None:
-                            make_response = control.make_response(control_fn, self)
-                
-            if not make_response:
-                if fn:
-                    func = getattr(self, fn,  None)
-                    #log.error(f'getattr(self, "{fn}" => {func}')
-                else:
-                    func = getattr(self, '__call__',  None)
-                    if func is None:
-                        func = getattr(self, 'open',  None)
-
+        #log.debug(f'PAGE({self.ID}).make_response ({fn})') domino 000022456|datbasdiscount
+        make_response = False
+        control_ID = None
+        if fn:
+            pos = fn.find('.')
+            if pos != -1:
+                control_ID = fn[:pos]
+                control_fn = fn[pos+1:]
+                #log.debug(f'control_ID={control_ID}, control_fn={control_fn}, CONTROLS={self.CONTROLS}')
+                if self.CONTROLS is not None:
+                    control = self.CONTROLS.get(control_ID)
+                    if control is not None:
+                        make_response = control.make_response(control_fn, self)
+            
+        if not make_response:
+            if fn is None or fn == 'open':
+                func = getattr(self, '__call__',  None)
                 if func is None:
-                    return None
-                func()
-                make_response = True
+                    func = getattr(self, 'open',  None)
+                if func is None:
+                    raise Exception(f'Page({self.ID}): не наден метод "__call__" или "open"') 
+            else:
+                func = getattr(self, fn,  None)
+                if func is None:
+                    raise Exception(f'Page({self.ID}):  не наден метод "{fn}" |__call__|open"') 
+            response = func()
+            if response:
+                return response
+            #log.debug(f'response = {response}')
+            make_response = True
 
-            if make_response:
-                #log.debug(f'make_response I')
-                if self.get('_pu'):
-                    return self.update()
-                else:
-                    if self.NAVBAR is None:
-                        self.application['navbar'](self)
-                    response = flask.make_response(self.html())
-                    response.headers['Cache-Control'] = 'no-store'
-                    return response
-            return None
-        except BaseException as ex:
-            log.exception(self.request.url)
-            return f'{ex}', 500
+        if make_response:
+            if self.get('_pu'):
+                return self.update()
+            else:
+                if self.NAVBAR is None:
+                    self.application['navbar'](self)
+                response = flask.make_response(self.html())
+                response.headers['Cache-Control'] = 'no-store'
+                return response
+        raise Exception(f'Не наден метод')
     
     def get(self, name, default = None):
         value = self.ARGS.get(name)
@@ -317,6 +409,8 @@ class Page:
         self.attributes[name] = value
     
     def url(self, href, params = {}, is_href=False):
+        if not isinstance(href, str):
+            href = f'.{href.__name__}'
         try:
             if href == None or href == '':
                 return ''
@@ -483,8 +577,6 @@ class Page:
     def Toolbar(self, ID = None, **kwargs):
         wg = Toolbar(self, ID, **kwargs)
         return self.widget(wg)
-        #self.WIDGETS.append(widget)
-        #return widget
 
     # Panel 
     def Panel(self, ID,  **kwargs):
@@ -599,6 +691,8 @@ class Widget:
     def ml(self, n):
         return self.style_rem('margin-left', n)
     def on(self, name, url, args = {}, forms = [], char = None, target=None):
+        if not isinstance(url, str):
+            url = f'.{url.__name__}'
         event = {'URL': self.page.url(url, args)}
         if char is not None:
             event['CHAR'] = char
@@ -634,6 +728,8 @@ class Widget:
         return self
 
     # formatter -----------------------
+    #def create_element(html, tag, css=None, attrib=None, **kwargs):
+
     def write_tag(self, html, tag, css=None, attrib = None, **kwargs):
         html.write(f'<{tag}')
         if self.ID:
@@ -653,10 +749,12 @@ class Widget:
             if value is not None:
                 html.write(f' {key}="{value}"')
         html.write('>\n')
+
     def write_tooltip(self, html):
         # data-toggle="tooltip" data-placement="bottom" title="TOOLTIP"
         if self.TOOLTIP:
             html.write(f' data-toggle="tooltip" data-placement="bottom" title="{self.TOOLTIP}"')
+
     def write_style(self, html, style=None):
         if self.STYLE or style:
             html.write(f' style="')
@@ -871,6 +969,11 @@ class TextBlock(Widget):
         self.PARAGRAPHS.append(line)
         return line
 
+    def line(self, style=None, css=None):
+        line = TextBlock.Line(self.page, style, css)
+        self.PARAGRAPHS.append(line)
+        return line
+
     def text(self, text):
         return self._current.text(text)
 
@@ -1081,7 +1184,10 @@ class Link(Widget):
     def text(self, text):
         self.TEXT = text
         return self
+    # dom.append(el)  dom
+
     def write(self, html):
+        #self.create_element(html)
         #<a href="#" {{Class(wg)}} {{Style(wg)}} {{Events(wg)}}>{{wg.TEXT}}</a>
         self.write_tag(html, 'a', href='#')
         html.write(self.TEXT)
@@ -1861,7 +1967,6 @@ class Tabs(Widget):
             #    {%- else -%}
             #        <a href="#{{i.ID}}" class="mdl-tabs__tab" style="text-decoration: none" {{Events(i)}}>{{i.TEXT}}</a>
             #    {%- endif -%}
-            #log.debug(f'TABITEM {self.TEXT}, is_active={self.ACTIVE}')
             if self.ACTIVE:
                 html.write(f'<a href="#{self.parent.ID}" class="mdl-tabs__tab is-active" style="text-decoration: none"')
                 self.write_events(html)

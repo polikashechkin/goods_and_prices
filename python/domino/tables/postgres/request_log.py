@@ -41,7 +41,8 @@ class RequestLog(Postgres.Base):
 RequestLogTable = RequestLog.__table__
 Postgres.Table(RequestLogTable)
         
-
+# log|discount|0000212|pages/wdwdwd|23223-332-33|00120|30|
+# 
 
 
 
